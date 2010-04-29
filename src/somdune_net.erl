@@ -26,11 +26,10 @@ error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
 
 proxy(Port, Module) ->
     info("Starting proxy on port ~p with module ~p", [Port, Module]),
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}]),
-    try
-        tcpAcceptor(ListenSocket, Module)
-    catch
-        eaddrinuse ->
+    case gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]) of
+        {ok, ListenSocket} ->
+            tcpAcceptor(ListenSocket, Module);
+        {error, eaddrinuse} ->
             error("Port is already in use: ~p", [Port]),
             ok
     end.
