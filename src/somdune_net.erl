@@ -165,12 +165,14 @@ proxy(Req, Ip, Port) ->
 
 make_request(Method, PathTuple, Version) ->
     {abs_path, Path} = PathTuple,
-    ["GET", <<" ">>, Path,
+
+    [atom_to_list(Method),
+     <<" ">>,
+     Path,
      case Version of
         {1,1} -> <<" HTTP/1.1\r\n">>;
         _     -> <<" HTTP/1.0\r\n">>
-     end],
-    <<"GET / HTTP/1.0\r\n">>.
+     end].
 
 make_headers(Headers) ->
     [ [ [atom_to_list(Key), <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
