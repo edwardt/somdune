@@ -30,7 +30,7 @@ proxy(Port, Module) ->
     try
         tcpAcceptor(ListenSocket, Module)
     catch
-        {error, eaddrinuse} ->
+        eaddrinuse ->
             error("Port is already in use: ~p", [Port]),
             ok
     end.
@@ -89,17 +89,16 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
         case lists:keytake(http_request, 1, Packets) of
             {value, RequestPacket, RequestHeaders} ->
                 {http_request, Method, Path, HttpVersion} = RequestPacket,
-                %RequestHeaders = [{Key, Val} || {header, {Key, Val}} <- HeaderPackets],
                 Request = #request{socket=Sock, method=Method, path=Path, version=HttpVersion, headers=RequestHeaders},
                 case apply(BalancerModule, route_request, [Request]) of
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
                     {reply, Status} ->
                         reply(Sock, HttpVersion, Status);
-                    {reply, Status, Headers} ->
-                        reply(Sock, HttpVersion, Status, Headers);
-                    {reply, Status, Headers, Body} ->
-                        reply(Sock, HttpVersion, Status, Headers, Body);
+                    {reply, Status, RespHeaders} ->
+                        reply(Sock, HttpVersion, Status, RespHeaders);
+                    {reply, Status, RespHeaders, Body} ->
+                        reply(Sock, HttpVersion, Status, RespHeaders, Body);
                     noop ->
                         ok;
                     Else ->
@@ -147,7 +146,6 @@ reply(Sock, Version, Status, Headers, Body) ->
     ],
 
     HeaderBytes = make_headers(lists:keystore("Content-Length", 1, Headers, {"Content-Length", integer_to_list(byte_size(Body))})),
-    info("HeaderBytes = ~p", [HeaderBytes]),
     gen_tcp:send(Sock, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]).
 
 
