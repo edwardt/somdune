@@ -18,7 +18,21 @@
 -behaviour(application).
 -export([start/2, stop/1]).
 
+-include("somdune.hrl").
 -export([start/0, version/0]).
+
+% XXX Development stuff
+-export([t/0]).
+
+%
+% The user-level API
+%
+
+-export([register_balancer/2]).
+
+register_balancer(Port, Module) ->
+    gen_server:call(?MANAGER, {register, Port, Module}).
+
 
 %% --------------------------------------------------------------------
 %% Generic utilities.
@@ -64,5 +78,12 @@ start_apps([App|Rest]) ->
     {error, _Reason} ->
        {error, {app_would_not_start, App}}
     end.
+
+
+% XXX: Development hooks.
+t() ->
+    somdune:start(),
+    somdune:register_balancer(5985, jason).
+
 
 % vim: sts=4 sw=4 et

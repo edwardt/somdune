@@ -16,26 +16,40 @@
 -module(somdune_net).
 -author('Jason Smith <jhs@couch.io>').
 
--export([tcpAcceptor/2]).
+-include("somdune.hrl").
+-export([proxy/2]).
+
+
+info(Msg, Args) -> error_logger:info_msg(Msg, Args).
+error(Msg, Args) -> error_logger:error_msg(Msg, Args).
+
+
+proxy(Port, Module) ->
+    info("Starting proxy on port ~p with module ~p", [Port, Module]),
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}]),
+    tcpAcceptor(null, ListenSocket).
+
 
 tcpAcceptor(Srv, ListeningSocket) ->
         case gen_tcp:accept(ListeningSocket) of
                 {ok, Sock} ->
                         Pid = spawn(fun () ->
-                                receive permission ->
+                                receive
+                                    permission ->
                                         inet:setopts(Sock, [
                                                 binary,
                                                 {packet, http_bin},
                                                 {active, true}
                                         ])
-                                after 60000 -> timeout
+                                    after 60000 -> timeout
                                 end,
-                                collectHttpHeaders(Srv, Sock,
-                                        tstamp()+?HTTP_HDR_RCV_TMO, [])
-                                end),
+                                collectHttpHeaders(Srv, Sock, ?HTTP_HDR_RCV_TMO, [])
+                        end),
                         gen_tcp:controlling_process(Sock, Pid),
                         Pid ! permission,
+
                         tcpAcceptor(Srv, ListeningSocket);
+
                 {error, econnaborted} ->
                         tcpAcceptor(Srv, ListeningSocket);
                 {error, closed} -> finished;
@@ -46,7 +60,11 @@ tcpAcceptor(Srv, ListeningSocket) ->
 
 
 collectHttpHeaders(Srv, Sock, UntilTS, Headers) ->
-  Timeout = (UntilTS - tstamp()),
+  % TODO: Check the timestamp and reduce the timeout for subsequent calls so that the initial
+  %       timeout provided is the total timeout of the collect run.
+  %Timeout = (UntilTS - tstamp()),
+  Timeout = UntilTS,
+
   receive
     % Add this next header into the pile of already received headers
     {http, Sock, {http_header, _Length, Key, undefined, Value}} ->
@@ -77,5 +95,13 @@ collectHttpHeaders(Srv, Sock, UntilTS, Headers) ->
   end.
 
 
+decode_method(Method) ->
+    "HI".
+
+reply(Sock, Headers, Callback) ->
+    error("I should reply!", []).
+
+dispatch_http_request(Server, Headers) ->
+    error("I should dispatch HTTP", []).
 
 % vim: sts=4 sw=4 et

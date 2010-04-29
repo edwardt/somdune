@@ -21,29 +21,14 @@
 -include("somdune.hrl").
 -export([start_link/0]).
 
--export([]). % TODO
-  
-%register_connection(ConnectionPid, State) ->
-%     gen_server:call(?MODULE, {register, ConnectionPid, State}).
-%     
-%unregister_connection(Name) ->
-%     gen_server:call(?MODULE, {unregister, Name}).
-%     
-%get_connection(Name) ->
-%     gen_server:call(?MODULE, {connection, Name}).   
-%     
-%connection_count() ->
-%    gen_server:call(?MODULE, connection_count).
-%    
-%register_db(ServerName, Name, DbPid) ->
-%    gen_server:call(?MODULE, {register_db, ServerName, Name, DbPid}).
-% 
-%unregister_db(Name) ->
-%    gen_server:call(?MODULE, {unregister_db, Name}).
-%    
-%get_db(Name) ->
-%    gen_server:call(?MODULE, {db, Name}).
-    
+%
+% The user-level API
+%
+
+handle_call({register, Port, Module}, _From, State) ->
+    spawn(somdune_net, proxy, [Port, Module]),
+    {reply, ok, State}.
+
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, nil, []).
@@ -56,9 +41,6 @@ init(_) ->
     %process_flag(priority, high),
     {ok, null}.
 
-
-handle_call(_Msg, _From, State) ->
-    {reply, null, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
