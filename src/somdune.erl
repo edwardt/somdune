@@ -87,6 +87,6 @@ t() ->
 
 route_request(Request) ->
     error_logger:info_msg("Got request: ~p~n", [Request]),
-    {reply, {404, "Not Found"}}.
+    {route, {"google.com", 80}}.
 
 % vim: sts=4 sw=4 et

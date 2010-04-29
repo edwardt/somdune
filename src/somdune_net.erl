@@ -96,17 +96,18 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
                     {reply, Status} ->
-                        reply(Sock, HttpVersion, Status);
+                        reply(Request, Status);
                     {reply, Status, RespHeaders} ->
-                        reply(Sock, HttpVersion, Status, RespHeaders);
+                        reply(Request, Status, RespHeaders);
                     {reply, Status, RespHeaders, Body} ->
-                        reply(Sock, HttpVersion, Status, RespHeaders, Body);
+                        reply(Request, Status, RespHeaders, Body);
                     noop ->
                         ok;
                     Else ->
                         info("Unknown ~p:route_request for ~p -> ~p", [BalancerModule, Request, Else]),
                         ok
-                end;
+                end,
+                poison_pill(Request, <<"postroute">>);
             false ->
                 error("Failed to parse request: ~p", [Packets])
         end;
@@ -125,20 +126,20 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
   end.
 
 
-reply(Sock, Version, Status) ->
-    reply(Sock, Version, Status, []).
+reply(Request, Status) ->
+    reply(Request, Status, []).
 
-reply(Sock, Version, Status, Headers) ->
+reply(Request, Status, Headers) ->
     {_, Message} = Status,
-    reply(Sock, Version, Status, Headers, list_to_binary(Message)).
+    reply(Request, Status, Headers, list_to_binary(Message)).
 
-reply(Sock, Version, Status, Headers, Body) ->
+reply(Request, Status, Headers, Body) ->
     info("reply Status=~p Headers=~p Body=~p", [Status, Headers, Body]),
-    % TODO: Add a Content-Length
+    poison_pill(Request, <<"prereply">>),
 
     {StatusCode, StatusMessage} = Status,
     StatusBytes = [
-        case Version of
+        case Request#request.version of
             {1, 1} -> <<"HTTP/1.1 ">>;
             _      -> <<"HTTP/1.0 ">>
         end,
@@ -148,16 +149,19 @@ reply(Sock, Version, Status, Headers, Body) ->
     ],
 
     HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(byte_size(Body))})),
-    gen_tcp:send(Sock, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]).
+    gen_tcp:send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]),
+    poison_pill(Request, <<"postreply">>).
 
 
 proxy(Req, Ip, Port) ->
+    poison_pill(Req, <<"preproxy">>),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
     info("Sending, ToSocket = ~p", [ToSocket]),
     gen_tcp:send(ToSocket,
         [ make_request(Req#request.method, Req#request.path, Req#request.version),
           make_headers(Req#request.headers) ] ),
-    relay(Req#request.socket, ToSocket, 0).
+    relay(Req#request.socket, ToSocket, 0),
+    poison_pill(Req, <<"postproxy">>).
 
 make_request(Method, PathTuple, Version) ->
     {abs_path, Path} = PathTuple,
