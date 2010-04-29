@@ -83,10 +83,10 @@ start_apps([App|Rest]) ->
 % XXX: Development hooks.
 t() ->
     somdune:start(),
-    somdune:register_balancer(5985, somdune).
+    somdune:register_balancer(15985, somdune).
 
 route_request(Request) ->
     error_logger:info_msg("Got request: ~p~n", [Request]),
-    {route, {"google.com", 80}}.
+    {route, {"localhost", 5985}}.
 
 % vim: sts=4 sw=4 et
