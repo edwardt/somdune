@@ -20,17 +20,23 @@
 -export([proxy/2]).
 
 
-info(Msg, Args) -> error_logger:info_msg(Msg, Args).
-error(Msg, Args) -> error_logger:error_msg(Msg, Args).
+info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
+error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
 
 
 proxy(Port, Module) ->
     info("Starting proxy on port ~p with module ~p", [Port, Module]),
     {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}]),
-    tcpAcceptor(null, ListenSocket).
+    try
+        tcpAcceptor(ListenSocket, Module)
+    catch
+        {error, eaddrinuse} ->
+            error("Port is already in use: ~p", [Port]),
+            ok
+    end.
 
 
-tcpAcceptor(Srv, ListeningSocket) ->
+tcpAcceptor(ListeningSocket, BalancerModule) ->
         case gen_tcp:accept(ListeningSocket) of
                 {ok, Sock} ->
                         Pid = spawn(fun () ->
@@ -43,15 +49,15 @@ tcpAcceptor(Srv, ListeningSocket) ->
                                         ])
                                     after 60000 -> timeout
                                 end,
-                                collectHttpHeaders(Srv, Sock, ?HTTP_HDR_RCV_TMO, [])
+                                collectHttpHeaders(Sock, ?HTTP_HDR_RCV_TMO, BalancerModule, [])
                         end),
+
                         gen_tcp:controlling_process(Sock, Pid),
                         Pid ! permission,
-
-                        tcpAcceptor(Srv, ListeningSocket);
+                        tcpAcceptor(ListeningSocket, BalancerModule);
 
                 {error, econnaborted} ->
-                        tcpAcceptor(Srv, ListeningSocket);
+                        tcpAcceptor(ListeningSocket, BalancerModule);
                 {error, closed} -> finished;
                 Msg ->
                         error_logger:error_msg("Acceptor died: ~p~n", [Msg]),
@@ -59,7 +65,7 @@ tcpAcceptor(Srv, ListeningSocket) ->
         end.
 
 
-collectHttpHeaders(Srv, Sock, UntilTS, Headers) ->
+collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
   % TODO: Check the timestamp and reduce the timeout for subsequent calls so that the initial
   %       timeout provided is the total timeout of the collect run.
   %Timeout = (UntilTS - tstamp()),
@@ -68,18 +74,41 @@ collectHttpHeaders(Srv, Sock, UntilTS, Headers) ->
   receive
     % Add this next header into the pile of already received headers
     {http, Sock, {http_header, _Length, Key, undefined, Value}} ->
-        collectHttpHeaders(Srv, Sock, UntilTS,
-                [{header, {Key,Value}}|Headers]);
+        collectHttpHeaders(Sock, UntilTS, BalancerModule,
+                [{header, {Key,Value}} | Headers]);
 
     {http, Sock, {http_request, Method, Path, HTTPVersion}} ->
-        collectHttpHeaders(Srv, Sock, UntilTS,
-                [{http_request, decode_method(Method), Path, HTTPVersion}
-                        | Headers]);
+        collectHttpHeaders(Sock, UntilTS, BalancerModule,
+                [{http_request, Method, Path, HTTPVersion} | Headers]);
 
     {http, Sock, http_eoh} ->
         inet:setopts(Sock, [{active, false}, {packet, 0}]),
-        reply(Sock, lists:reverse(Headers),
-                fun(Hdrs) -> dispatch_http_request(Srv, Hdrs) end);
+
+        % With the headers known, allow the registered proxy module to decide what to do with the query.
+        Packets = lists:reverse(Headers),
+        case lists:keytake(http_request, 1, Packets) of
+            {value, RequestPacket, RequestHeaders} ->
+                {http_request, Method, Path, HttpVersion} = RequestPacket,
+                %RequestHeaders = [{Key, Val} || {header, {Key, Val}} <- HeaderPackets],
+                Request = #request{socket=Sock, method=Method, path=Path, version=HttpVersion, headers=RequestHeaders},
+                case apply(BalancerModule, route_request, [Request]) of
+                    {route, {Host, Port}} ->
+                        proxy(Request, Host, Port);
+                    {reply, Status} ->
+                        reply(Sock, HttpVersion, Status);
+                    {reply, Status, Headers} ->
+                        reply(Sock, HttpVersion, Status, Headers);
+                    {reply, Status, Headers, Body} ->
+                        reply(Sock, HttpVersion, Status, Headers, Body);
+                    noop ->
+                        ok;
+                    Else ->
+                        info("Unknown ~p:route_request for ~p -> ~p", [BalancerModule, Request, Else]),
+                        ok
+                end;
+            false ->
+                error("Failed to parse request: ~p", [Packets])
+        end;
 
     {tcp_closed, Sock} -> nevermind;
 
@@ -95,13 +124,63 @@ collectHttpHeaders(Srv, Sock, UntilTS, Headers) ->
   end.
 
 
-decode_method(Method) ->
-    "HI".
+reply(Sock, Version, Status) ->
+    reply(Sock, Version, Status, []).
 
-reply(Sock, Headers, Callback) ->
-    error("I should reply!", []).
+reply(Sock, Version, Status, Headers) ->
+    {_, Message} = Status,
+    reply(Sock, Version, Status, Headers, list_to_binary(Message)).
 
-dispatch_http_request(Server, Headers) ->
-    error("I should dispatch HTTP", []).
+reply(Sock, Version, Status, Headers, Body) ->
+    info("reply Status=~p Headers=~p Body=~p", [Status, Headers, Body]),
+    % TODO: Add a Content-Length
+
+    {StatusCode, StatusMessage} = Status,
+    StatusBytes = [
+        case Version of
+            {1, 1} -> <<"HTTP/1.1 ">>;
+            _      -> <<"HTTP/1.0 ">>
+        end,
+        list_to_binary(integer_to_list(StatusCode)),
+        <<" ">>,
+        StatusMessage
+    ],
+
+    HeaderBytes = make_headers(lists:keystore("Content-Length", 1, Headers, {"Content-Length", integer_to_list(byte_size(Body))})),
+    info("HeaderBytes = ~p", [HeaderBytes]),
+    gen_tcp:send(Sock, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]).
+
+
+proxy(Req, Ip, Port) ->
+    { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
+    gen_tcp:send(ToSocket,
+        [ make_request(Req#request.method, Req#request.path, Req#request.version),
+          make_headers(Req#request.headers) ] ),
+    relay(Req#request.socket, ToSocket, 0).
+
+make_request(Method, Path, {1, 1}) ->
+    [Method, <<" ">>, Path, <<" HTTP/1.1\r\n">>];
+make_request(Method, Path, _) ->
+    [Method, <<" ">>, Path, <<" HTTP/1.0\r\n">>].
+
+make_headers(Headers) ->
+    [ [ [Key, <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
+
+relay(FromSocket, ToSocket, Bytes) ->
+    inet:setopts(FromSocket, [{packet, 0}, {active, once} ]),
+    inet:setopts(ToSocket,   [{packet, 0}, {active, once} ]),
+    receive
+        {tcp, FromSocket, Data} ->
+            gen_tcp:send(ToSocket, Data),
+            relay(FromSocket, ToSocket, Bytes);
+        {tcp, ToSocket, Data} ->
+            gen_tcp:send(FromSocket, Data),
+            relay(FromSocket, ToSocket, Bytes + size(Data));
+        {tcp_closed, _} ->
+            { ok, Bytes }
+    after
+        30000 ->
+            { error, timeout }
+    end.
 
 % vim: sts=4 sw=4 et

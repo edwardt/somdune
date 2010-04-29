@@ -16,3 +16,12 @@
 
 % Milliseconds to wait for receipt of all headers
 -define(HTTP_HDR_RCV_TMO, 10000).
+
+% A client HTTP request.
+-record(request, {
+    socket,
+    method,
+    path,
+    version,
+    headers
+}).

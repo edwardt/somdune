@@ -22,7 +22,7 @@
 -export([start/0, version/0]).
 
 % XXX Development stuff
--export([t/0]).
+-export([t/0, route_request/1]).
 
 %
 % The user-level API
@@ -83,7 +83,10 @@ start_apps([App|Rest]) ->
 % XXX: Development hooks.
 t() ->
     somdune:start(),
-    somdune:register_balancer(5985, jason).
+    somdune:register_balancer(5985, somdune).
 
+route_request(Request) ->
+    error_logger:info_msg("Got request: ~p~n", [Request]),
+    {reply, {404, "Not Found"}}.
 
 % vim: sts=4 sw=4 et
