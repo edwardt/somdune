@@ -1,0 +1,8 @@
+#!/bin/bash
+
+base="$( dirname $BASH_SOURCE )/.."
+ebin="$base/ebin"
+
+cd "$base"
+[ -z "$skip_emake" ] && erl -make
+erl -pa "$ebin"
