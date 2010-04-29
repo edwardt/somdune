@@ -86,9 +86,12 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
         % With the headers known, allow the registered proxy module to decide what to do with the query.
         Packets = lists:reverse(Headers),
         case lists:keytake(http_request, 1, Packets) of
-            {value, RequestPacket, RequestHeaders} ->
+            {value, RequestPacket, HeaderPackets} ->
                 {http_request, Method, Path, HttpVersion} = RequestPacket,
+                RequestHeaders = [{atomify(Key), Val} || {header, {Key, Val}} <- HeaderPackets],
                 Request = #request{socket=Sock, method=Method, path=Path, version=HttpVersion, headers=RequestHeaders},
+
+                poison_pill(Request, <<"preroute">>),
                 case apply(BalancerModule, route_request, [Request]) of
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
@@ -144,24 +147,29 @@ reply(Sock, Version, Status, Headers, Body) ->
         StatusMessage
     ],
 
-    HeaderBytes = make_headers(lists:keystore("Content-Length", 1, Headers, {"Content-Length", integer_to_list(byte_size(Body))})),
+    HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(byte_size(Body))})),
     gen_tcp:send(Sock, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]).
 
 
 proxy(Req, Ip, Port) ->
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
+    info("Sending, ToSocket = ~p", [ToSocket]),
     gen_tcp:send(ToSocket,
         [ make_request(Req#request.method, Req#request.path, Req#request.version),
           make_headers(Req#request.headers) ] ),
     relay(Req#request.socket, ToSocket, 0).
 
-make_request(Method, Path, {1, 1}) ->
-    [Method, <<" ">>, Path, <<" HTTP/1.1\r\n">>];
-make_request(Method, Path, _) ->
-    [Method, <<" ">>, Path, <<" HTTP/1.0\r\n">>].
+make_request(Method, PathTuple, Version) ->
+    {abs_path, Path} = PathTuple,
+    ["GET", <<" ">>, Path,
+     case Version of
+        {1,1} -> <<" HTTP/1.1\r\n">>;
+        _     -> <<" HTTP/1.0\r\n">>
+     end],
+    <<"GET / HTTP/1.0\r\n">>.
 
 make_headers(Headers) ->
-    [ [ [Key, <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
+    [ [ [atom_to_list(Key), <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
 
 relay(FromSocket, ToSocket, Bytes) ->
     inet:setopts(FromSocket, [{packet, 0}, {active, once} ]),
@@ -179,5 +187,22 @@ relay(FromSocket, ToSocket, Bytes) ->
         30000 ->
             { error, timeout }
     end.
+
+
+atomify(Val) ->
+    case is_binary(Val) of
+        true -> list_to_atom(binary_to_list(Val));
+        _    -> Val
+    end.
+
+% The ability to crash the server with a header for testing.
+poison_pill(Request, Hook) ->
+    case lists:keyfind('X-Somdune-Die', 1, Request#request.headers) of
+        {'X-Somdune-Die', Hook} ->
+            info("Activating poison pill at ~p", [Hook]),
+            this = that;
+        _ -> ok
+    end.
+
 
 % vim: sts=4 sw=4 et
