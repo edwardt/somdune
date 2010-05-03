@@ -17,7 +17,7 @@
 -author('Jason Smith <jhs@couch.io>').
 
 -include("somdune.hrl").
--export([proxy/2]).
+-export([proxy/2, request_to_binary/1]).
 
 
 info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
@@ -157,9 +157,7 @@ proxy(Req, Ip, Port) ->
     poison_pill(Req, <<"preproxy">>),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
     info("Sending, ToSocket = ~p", [ToSocket]),
-    gen_tcp:send(ToSocket,
-        [ make_request(Req#request.method, Req#request.path, Req#request.version),
-          make_headers(Req#request.headers) ] ),
+    gen_tcp:send(ToSocket, request_to_binary(Req)),
     relay(Req#request.socket, ToSocket, 0),
     poison_pill(Req, <<"postproxy">>).
 
@@ -176,6 +174,13 @@ make_request(Method, PathTuple, Version) ->
 
 make_headers(Headers) ->
     [ [ [atom_to_list(Key), <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
+
+
+request_to_binary(Req) ->
+    list_to_binary([
+        make_request(Req#request.method, Req#request.path, Req#request.version),
+        make_headers(Req#request.headers) ]).
+
 
 relay(FromSocket, ToSocket, Bytes) ->
     inet:setopts(FromSocket, [{packet, 0}, {active, once} ]),
