@@ -95,6 +95,9 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                 case apply(BalancerModule, route_request, [Request]) of
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
+                    {raw_route, {Host, Port}, Data} ->
+                        info("raw_route~n~p", [Data]),
+                        proxy_raw(Request, Data, Host, Port);
                     {reply, Status} ->
                         reply(Request, Status);
                     {reply, Status, RespHeaders} ->
@@ -154,10 +157,13 @@ reply(Request, Status, Headers, Body) ->
 
 
 proxy(Req, Ip, Port) ->
+    proxy_raw(Req, request_to_binary(Req), Ip, Port).
+
+proxy_raw(Req, Data, Ip, Port) ->
     poison_pill(Req, <<"preproxy">>),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
     info("Sending, ToSocket = ~p", [ToSocket]),
-    gen_tcp:send(ToSocket, request_to_binary(Req)),
+    gen_tcp:send(ToSocket, Data),
     relay(Req#request.socket, ToSocket, 0),
     poison_pill(Req, <<"postproxy">>).
 
