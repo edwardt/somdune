@@ -44,7 +44,7 @@ tcpAcceptor(ListeningSocket, BalancerModule) ->
                                         inet:setopts(Sock, [
                                                 binary,
                                                 {packet, http_bin},
-                                                {active, true}
+                                                {active, false}
                                         ])
                                     after 60000 -> timeout
                                 end,
@@ -70,6 +70,7 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
   %Timeout = (UntilTS - tstamp()),
   Timeout = UntilTS,
 
+  inet:setopts(Sock, [{active, once}]),
   receive
     % Add this next header into the pile of already received headers
     {http, Sock, {http_header, _Length, Key, undefined, Value}} ->
@@ -81,8 +82,6 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                 [{http_request, Method, Path, HTTPVersion} | Headers]);
 
     {http, Sock, http_eoh} ->
-        inet:setopts(Sock, [{active, false}, {packet, 0}]),
-
         % With the headers known, allow the registered proxy module to decide what to do with the query.
         Packets = lists:reverse(Headers),
         case lists:keytake(http_request, 1, Packets) of
