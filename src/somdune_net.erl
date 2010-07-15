@@ -94,6 +94,8 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                 case apply(BalancerModule, route_request, [Request]) of
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
+                    {route_new_request, {Host, Port}, NewRequest} ->
+                        proxy(NewRequest, Host, Port);
                     {raw_route, {Host, Port}, Data} ->
                         info("raw_route~n~p", [Data]),
                         proxy_raw(Request, Data, Host, Port);
