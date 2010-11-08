@@ -28,14 +28,14 @@ proxy(Port, Module) ->
     info("Starting proxy on port ~p with module ~p", [Port, Module]),
     case gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]) of
         {ok, ListenSocket} ->
-            tcpAcceptor(ListenSocket, Module);
+            tcpAcceptor(Port, ListenSocket, Module);
         {error, eaddrinuse} ->
             error("Port is already in use: ~p", [Port]),
             ok
     end.
 
 
-tcpAcceptor(ListeningSocket, BalancerModule) ->
+tcpAcceptor(Port, ListeningSocket, BalancerModule) ->
         case gen_tcp:accept(ListeningSocket) of
                 {ok, Sock} ->
                         Pid = spawn(fun () ->
@@ -53,14 +53,16 @@ tcpAcceptor(ListeningSocket, BalancerModule) ->
 
                         gen_tcp:controlling_process(Sock, Pid),
                         Pid ! permission,
-                        tcpAcceptor(ListeningSocket, BalancerModule);
+                        tcpAcceptor(Port, ListeningSocket, BalancerModule);
 
                 {error, econnaborted} ->
-                        tcpAcceptor(ListeningSocket, BalancerModule);
+                        tcpAcceptor(Port, ListeningSocket, BalancerModule);
                 {error, closed} -> finished;
                 Msg ->
                         error_logger:error_msg("Acceptor died: ~p~n", [Msg]),
-                        gen_tcp:close(ListeningSocket)
+                        gen_tcp:close(ListeningSocket),
+                        error_logger:error_msg("Attempting restart", []),
+                        proxy(Port, BalancerModule)
         end.
 
 
