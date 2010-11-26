@@ -220,7 +220,7 @@ poison_pill(Request, Hook) ->
     case lists:keyfind('X-Somdune-Die', 1, Request#request.headers) of
         {'X-Somdune-Die', Hook} ->
             info("Activating poison pill at ~p", [Hook]),
-            this = that;
+            exit(poison_pill);
         _ -> ok
     end.
 
