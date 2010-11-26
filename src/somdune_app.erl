@@ -13,7 +13,7 @@
 
 
 -module(somdune_app).
--author('Jason Smith <jhs@couch.io>').
+-author('Jason Smith <jhs@couchone.com>').
 
 -behaviour(application).
 

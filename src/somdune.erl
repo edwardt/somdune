@@ -13,7 +13,7 @@
 
 
 -module(somdune).
--author('Jason Smith <jhs@couch.io>').
+-author('Jason Smith <jhs@couchone.com>').
 
 -include("somdune.hrl").
 

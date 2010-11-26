@@ -14,7 +14,7 @@
 % Initial code from http://lionet.livejournal.com/42016.html
 
 -module(somdune_net).
--author('Jason Smith <jhs@couch.io>').
+-author('Jason Smith <jhs@couchone.com>').
 
 -include("somdune.hrl").
 -export([proxy/2, request_to_binary/1]).

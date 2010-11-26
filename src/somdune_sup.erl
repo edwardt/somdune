@@ -13,7 +13,7 @@
 
 
 -module(somdune_sup).
--author('Jason Smith <jhs@couch.io>').
+-author('Jason Smith <jhs@couchone.com>').
 -behaviour(supervisor).
 
 %% API
