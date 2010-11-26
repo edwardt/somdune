@@ -15,13 +15,10 @@
 -module(somdune).
 -author('Jason Smith <jhs@couch.io>').
 
--behaviour(application).
--export([start/2, stop/1]).
-
 -include("somdune.hrl").
--export([start/0, version/0]).
 
 % XXX Development stuff
+-export([start/0, version/0]).
 -export([t/0, route_request/1]).
 
 %
@@ -41,43 +38,12 @@ register_balancer(Port, Module) ->
 %% @spec () -> ok
 %% @doc Start applications which exmpp depends on then start exmpp.
 start() ->
-    application:start(somdune).  
+    application:start(somdune_app).
 
-%
-% application API
-%
-
-start(_Start_Type, _Start_Args) ->
-    case start_apps([]) of
-        ok->
-            somdune_sup:start_link();
-        {error, Reason} ->
-            {error, Reason}
-    end.
-    
-
-stop(_State) ->
-    ok.
-    
 
 version() ->
     {ok, Version} = application:get_key(somdune, vsn),
-    Version.   
-
-
-% A simple way to start apps which this application depends on.
-start_apps([]) ->
-    ok;
-
-start_apps([App|Rest]) ->
-    case application:start(App) of
-    ok ->
-       start_apps(Rest);
-    {error, {already_started, App}} ->
-       start_apps(Rest);
-    {error, _Reason} ->
-       {error, {app_would_not_start, App}}
-    end.
+    Version.
 
 
 % XXX: Development hooks.

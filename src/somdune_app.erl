@@ -1,4 +1,4 @@
-%%% Copyright 2009 Relaxed, Inc.
+%%% Copyright 2010 CouchOne, Inc.
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
 %%% You may obtain a copy of the License at
@@ -12,33 +12,43 @@
 %%% limitations under the License.
 
 
--module(somdune_sup).
+-module(somdune_app).
 -author('Jason Smith <jhs@couch.io>').
--behaviour(supervisor).
 
-%% API
--export([start_link/0]).
+-behaviour(application).
 
-%% Supervisor callbacks
--export([init/1]).
-
-%% helper macro for declaring children of supervisor
--define(child(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [i]}).
+%% Application callbacks
+-export([start/2, stop/1]).
 
 %% ===================================================================
-%% API functions
+%% Application callbacks
 %% ===================================================================
 
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start(_StartType, _StartArgs) ->
+    case start_apps([]) of
+        ok->
+            somdune_sup:start_link();
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
-%% ===================================================================
-%% Supervisor callbacks
-%% ===================================================================
 
-init([]) ->
-    SupervisorSpec = {one_for_one, 10, 3600},
-    ManagerSpec = ?child(somdune_manager, supervisor),
-    {ok, {SupervisorSpec, [ManagerSpec]}}.
+stop(_State) ->
+    ok.
+    
 
-% vim: sw=4 sts=4 et
+% A simple way to start apps which this application depends on.
+start_apps([]) ->
+    ok;
+
+start_apps([App|Rest]) ->
+    case application:start(App) of
+    ok ->
+       start_apps(Rest);
+    {error, {already_started, App}} ->
+       start_apps(Rest);
+    {error, _Reason} ->
+       {error, {app_would_not_start, App}}
+    end.
+
+% vim: sts=4 sw=4 et
