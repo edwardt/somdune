@@ -1,0 +1,12 @@
+{application, webdirs,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { webdirs_app, []}},
+  {env, []}
+ ]}.
