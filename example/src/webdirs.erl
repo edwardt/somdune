@@ -70,8 +70,35 @@ start_proxy() ->
 
 
 route_request(Request) ->
-    ?INFO("Request: ~p", [Request]),
-    {reply, {404, "Not implemented"}}.
+    {abs_path, Path} = Request#request.path,
+    ?INFO("Request for path: ~p", [Path]),
+
+    case Path of
+        <<"/reload">> ->
+            ?INFO("Reloading plugin", []),
+            _Pid = spawn(fun() -> reload() end),
+            {reply, {200, "Reloading"}, [{'Content-Type', <<"text/plain">>}], <<"Reloading routing policy\r\n">>};
+        _ ->
+            {reply, {404, "Not implemented"}}
+    end.
+
+
+reload() ->
+    ?INFO("I should reload: ~p\n", [?MODULE]),
+    {ok, ?MODULE} = compile:file('src/webdirs', [
+        verbose, report_errors, report_warnings,
+        {i, "../include"},
+        {i, "./include"},
+        {outdir, "ebin"}
+    ]),
+    ok = sys:suspend(?MODULE),
+    case code:purge(?MODULE) of
+        true -> ok;
+        false -> ?INFO("code:purge returned false; no big deal", [])
+    end,
+    {module, ?MODULE} = code:load_file(?MODULE),
+    ok = sys:change_code(?MODULE, ?MODULE, "1", []),
+    ok = sys:resume(?MODULE).
 
 %%
 %% gen_server API
