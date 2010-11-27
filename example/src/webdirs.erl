@@ -77,7 +77,7 @@ route_request(Request) ->
 %% gen_server API
 %%
 
-init(Arg) ->
+init(_Arg) ->
     start_proxy().
 
 handle_call(_Msg, _From, State) ->
