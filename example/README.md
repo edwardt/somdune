@@ -3,13 +3,12 @@
 This is an example Somdune application. It starts a Somdune proxy with a simple plugin:
 Subdirectories under the web site are proxied to various other web sites.
 
-* `/google` goes to www.google.com
-* `/jhs` goes to my CouchDB server, jhs.couchone.com
 * `/couchone` goes to the CouchOne web site, www.couchone.com
+* `/jhs` goes to my CouchDB server, jhs.couchone.com
+* `/twitter` goes to www.twitter.com
 
-Note that cookies and other things will not make these sites terribly useful; however,
-it is just an example of how to proxy to various web services based on any aspect of
-the incoming request.
+Note that cookies and other problems will not make these sites terribly useful; however,
+it should be clear what is going on and how Somdune works.
 
 ## Building
 
