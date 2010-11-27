@@ -27,3 +27,5 @@ will start the actual OTP application for you.
 
     cd example
     erl -pa ../ebin -pa ./ebin -heart -s webdirs
+
+Next connect to http://localhost:8888/ and follow the links!
