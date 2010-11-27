@@ -79,8 +79,61 @@ route_request(Request) ->
             _Pid = spawn(fun() -> reload() end),
             {reply, {200, "Reloading"}, [{'Content-Type', <<"text/plain">>}], <<"Reloading routing policy\r\n">>};
         _ ->
-            {reply, {404, "Not implemented"}}
+            Dirs = string:tokens(binary_to_list(Path), "/"),
+            case Dirs of
+                [] ->
+                    % User queried /
+                    default_reply();
+                _ ->
+                    % User queried /something (or /something/foo, whatever).
+                    TopLevelDir = lists:nth(1, Dirs),
+                    case proplists:get_value(TopLevelDir, ?WEBDIRS) of
+                        undefined ->
+                            % Unknown subdirectory, no big deal.
+                            default_reply();
+                        [BackendHost, BackendPort] ->
+                            % Send them through! It would be nice to simply return % {route, {BackendHost, BackendPort}}.
+                            % That can be okay with hostname-based virtual hosting; however these servers will not like
+                            % the strange "Host" header, as well as the strange path (/couchone, etc.).
+                            % Therefore use Somdune's support to modify the request before sending it through.
+
+                            % Strip the first directory, so the remote server will not see /foo/bar but just /bar.
+                            NewPath = case lists:nthtail(1, Dirs) of
+                                []       -> "/";
+                                SubDirs  -> "/" ++ filename:join(SubDirs)
+                            end,
+
+                            % Correct the Host header.
+                            FixedHost = lists:keystore('Host', 1, Request#request.headers, {'Host', list_to_binary(BackendHost)}),
+
+                            % Always add a Connection: close since Somdune becomes a raw TCP proxy after the route is established.
+                            % Since every request needs its Host header changed, using "Connection: close" will force the browser
+                            % to reconnect each time.
+                            NewHeaders = lists:keystore('Connection', 1, FixedHost, {'Connection', <<"close">>}),
+
+                            NewRequest = Request#request{path={abs_path, NewPath}, headers=NewHeaders},
+                            {route_new_request, {BackendHost, BackendPort}, NewRequest}
+                    end
+            end
     end.
+
+
+default_reply() ->
+    % A simple HTML reply for unrecognized paths, or the root URL, or whatever.
+    Status = {200, "Default reply"},
+    Headers = [{'Content-Type', <<"text/html">>}],
+    Body = iolist_to_binary([ "<html><head><title>Webdirs</title></head><body>"
+                            , "<h1>Webdirs</h1>"
+                            , "These web sites are hosted inside this web site:"
+                            , "<ul>"
+                            , lists:map(fun(Prop) ->
+                                            {Key, [Host, Port]} = Prop,
+                                            ["<li>", "<a href='/", Key, "/'>", Key, "</a> is ", Host, ":", integer_to_list(Port), "</li>"]
+                                        end, ?WEBDIRS)
+                            , "</ul>"
+                            , "</body></html>"
+                            ]),
+    {reply, Status, Headers, Body}.
 
 
 reload() ->
