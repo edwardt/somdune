@@ -14,10 +14,9 @@
 %% This is an example Somdune plugin which "swallows" external web sites
 %% and places them in subdirectories within this server. For example:
 %%
-%% localhost:8888/google/   -> Proxies to www.google.com
+%% localhost:8888/twitter/   -> Proxies to twitter.com
 %% localhost:8888/jhs/      -> Proxies to jhs.couchone.com:5984
 %% localhost:8888/couchone/ -> Proxies to www.couchone.com
-%% localhost:8888/webdirs/  -> Direct replies from webdirs
 
 -module(webdirs).
 -author('Jason Smith <jhs@couchone.com>').
@@ -51,9 +50,9 @@ start_link() ->
 %%
 
 -define(HTTP_PORT, 8888).
--define(WEBDIRS, [{google, "www.google.com", 80},
-                  {jhs, "jhs.couchone.com", 5984},
-                  {couchone, "www.couchone.com", 80}
+-define(WEBDIRS, [{"twitter" , ["twitter.com"     , 80  ]},
+                  {"jhs"     , ["jhs.couchone.com", 5984]},
+                  {"couchone", ["www.couchone.com", 80  ]}
                  ]).
 
 start_proxy() ->
