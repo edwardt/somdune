@@ -50,9 +50,9 @@ start_link() ->
 %%
 
 -define(HTTP_PORT, 8888).
--define(WEBDIRS, [{"twitter" , ["twitter.com"     , 80  ]},
-                  {"jhs"     , ["jhs.couchone.com", 5984]},
-                  {"couchone", ["www.couchone.com", 80  ]}
+-define(WEBDIRS, [ {"couchone", ["www.couchone.com", 80  ]}
+                 , {"jhs"     , ["jhs.couchone.com", 5984]}
+                 , {"twitter" , ["twitter.com"     , 80  ]}
                  ]).
 
 start_proxy() ->
