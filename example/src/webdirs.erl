@@ -77,7 +77,7 @@ route_request(Request) ->
         <<"/reload">> ->
             ?INFO("Reloading plugin", []),
             _Pid = spawn(fun() -> reload() end),
-            {reply, {200, "Reloading"}, [{'Content-Type', <<"text/plain">>}], <<"Reloading routing policy\r\n">>};
+            {reply, {200, "Reloading"}, [{'Content-Type', <<"text/html">>}], <<"Policy reloaded. <a href='/'>Try now.</a>\r\n">>};
         _ ->
             Dirs = string:tokens(binary_to_list(Path), "/"),
             case Dirs of
@@ -130,6 +130,7 @@ default_reply() ->
                                             {Key, [Host, Port]} = Prop,
                                             ["<li>", "<a href='/", Key, "/'>", Key, "</a> is ", Host, ":", integer_to_list(Port), "</li>"]
                                         end, ?WEBDIRS)
+                            , "<li><a href='/reload'>Reload the routing policy</a></li>"
                             , "</ul>"
                             , "</body></html>"
                             ]),
