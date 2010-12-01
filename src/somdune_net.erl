@@ -244,7 +244,13 @@ make_request(Method, PathTuple, Version) ->
      end].
 
 make_headers(Headers) ->
-    [ [ [atom_to_list(Key), <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
+    ToKey = fun(Key) ->
+        if
+            is_atom(Key) -> atom_to_list(Key);
+            true         -> Key
+        end
+    end,
+    [ [ [ToKey(Key), <<": ">>, Value, <<"\r\n">> ] || {Key, Value} <- Headers ] , <<"\r\n">>].
 
 
 request_to_binary(Req) ->
