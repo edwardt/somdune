@@ -94,7 +94,7 @@ route_request(Request) ->
             _Pid = spawn(fun() -> reload() end),
             {reply, {200, "Reloading"}, [{'Content-Type', <<"text/html">>}], <<"Policy reloaded. <a href='/'>Try now.</a>\r\n">>};
         _ ->
-            Dirs = string:tokens(binary_to_list(Path), "/"),
+            Dirs = string:tokens(Path, "/"),
             case Dirs of
                 [] ->
                     % User queried /
