@@ -20,18 +20,18 @@
 -export([run_proxy/3, request_to_binary/1]).
 
 
-info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
-error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
+log_info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
+log_error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
 
 
 run_proxy(Port, BalancerModule, Options) ->
-    info("Starting proxy on port ~p with module ~p; options ~p", [Port, BalancerModule, Options]),
+    log_info("Starting proxy on port ~p with module ~p; options ~p", [Port, BalancerModule, Options]),
 
     NetModule = case lists:keysearch(certfile, 1, Options) of
         false ->
             gen_tcp;
         {value, _} ->
-            info("Port ~p will use SSL", [Port]),
+            log_info("Port ~p will use SSL", [Port]),
             application:start(crypto),
             application:start(public_key),
             case application:start(ssl) of
@@ -41,7 +41,7 @@ run_proxy(Port, BalancerModule, Options) ->
                     % Seed SSL if possible.
                     case file:read_file_info("/dev/random") of
                         {error, enoent} ->
-                            error("Could not seed SSL from /dev/random"),
+                            log_error("Could not seed SSL from /dev/random", []),
                             ssl:seed(term_to_binary(now()));
                         {ok, _} ->
                             ssl:seed(os:cmd("df if=/dev/random bs=256 count=1"))
@@ -51,24 +51,24 @@ run_proxy(Port, BalancerModule, Options) ->
     end,
 
     Restart = fun() ->
-        info("Restarting proxy", []),
+        log_info("Restarting proxy", []),
         run_proxy(Port, BalancerModule, Options)
     end,
 
     Accept = fun(Sock) ->
-        %info("Accept: ~p", [Sock]),
+        %log_info("Accept: ~p", [Sock]),
         case NetModule of
             gen_tcp ->
                 gen_tcp:accept(Sock);
             ssl ->
                 {ok, SslSock} = ssl:transport_accept(Sock),
-                %info("ssl:transport_accept done: ~p", [SslSock]),
+                %log_info("ssl:transport_accept done: ~p", [SslSock]),
                 case ssl:ssl_accept(SslSock) of
                     {error, Er} ->
-                        error("Error accepting SSL connection: ~p", [Er]),
+                        log_error("Error accepting SSL connection: ~p", [Er]),
                         {error, Er};
                     ok ->
-                        %info("SSL handshake success", []),
+                        %log_info("SSL handshake success", []),
                         {ok, SslSock}
                 end
         end
@@ -78,10 +78,10 @@ run_proxy(Port, BalancerModule, Options) ->
         {ok, ListenSocket} ->
             tcpAcceptor(ListenSocket, BalancerModule, Accept, Restart);
         {error, eaddrinuse} ->
-            error("Port is already in use: ~p", [Port]),
+            log_error("Port is already in use: ~p", [Port]),
             ok;
         Else ->
-            error("What happened? ~p", [Else]),
+            log_error("What happened? ~p", [Else]),
             exit(error)
     end.
 
@@ -112,12 +112,12 @@ tcpAcceptor(ListeningSocket, BalancerModule, Accept, Restart) ->
 
             Again();
         {error, econnaborted} ->
-            info("Connection aborted", []),
+            log_info("Connection aborted", []),
             Again();
         {error, closed} ->
             finished;
         {error, OtherError} ->
-            info("Restarting on unexpected error: ~p", [OtherError]),
+            log_error("Restarting on unexpected error: ~p", [OtherError]),
             Again();
         Msg ->
             error_logger:error_msg("Acceptor died: ~p~n", [Msg]),
@@ -160,7 +160,7 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                     {route_new_request, {Host, Port}, NewRequest} ->
                         proxy(NewRequest, Host, Port);
                     {raw_route, {Host, Port}, Data} ->
-                        info("raw_route~n~p", [Data]),
+                        %log_info("raw_route~n~p", [Data]),
                         proxy_raw(Request, Data, Host, Port);
                     {reply, Status} ->
                         reply(Request, Status);
@@ -171,21 +171,21 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                     noop ->
                         ok;
                     Else ->
-                        info("Unknown ~p:route_request for ~p -> ~p", [BalancerModule, Request, Else]),
+                        log_info("Unknown ~p:route_request for ~p -> ~p", [BalancerModule, Request, Else]),
                         ok
                 end,
                 poison_pill(Request, <<"postroute">>);
             false ->
-                error("Failed to parse request: ~p", [Packets])
+                log_error("Failed to parse request: ~p", [Packets])
         end;
     {tcp_closed, Sock} ->
-        info("tcp_closed", []),
+        %log_info("tcp_closed", []),
         nevermind;
     Msg ->
         io:format("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)])
 
   after Timeout ->
-        info("timeout", []),
+        log_info("timeout", []),
         reply(Sock, Headers,
                 fun(_) -> [{status, 408, "Request Timeout"},
                         {header, {<<"Content-Type: ">>, <<"text/html">>}},
@@ -203,7 +203,7 @@ reply(Request, Status, Headers) ->
     reply(Request, Status, Headers, list_to_binary(Message)).
 
 reply(Request, Status, Headers, Body) ->
-    info("reply Status=~p Headers=~p Body=~p", [Status, Headers, Body]),
+    log_info("reply Status=~p Headers=~p Body=~p", [Status, Headers, Body]),
     poison_pill(Request, <<"prereply">>),
 
     {StatusCode, StatusMessage} = Status,
@@ -227,7 +227,7 @@ proxy(Req, Ip, Port) ->
 proxy_raw(Req, Data, Ip, Port) ->
     poison_pill(Req, <<"preproxy">>),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
-    %info("Sending, ToSocket = ~p", [ToSocket]),
+    %log_info("Sending, ToSocket = ~p", [ToSocket]),
     tcp_send(ToSocket, Data),
     relay(Req#request.socket, ToSocket, 0),
     poison_pill(Req, <<"postproxy">>).
@@ -316,7 +316,7 @@ atomify(Val) ->
 poison_pill(Request, Hook) ->
     case lists:keyfind('X-Somdune-Die', 1, Request#request.headers) of
         {'X-Somdune-Die', Hook} ->
-            info("Activating poison pill at ~p", [Hook]),
+            log_info("Activating poison pill at ~p", [Hook]),
             exit(poison_pill);
         _ -> ok
     end.
