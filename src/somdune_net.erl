@@ -287,11 +287,11 @@ tcp_send(Socket, Data) ->
         tcp -> gen_tcp:send(Socket, Data)
     end.
 
-tcp_close(Socket) ->
-    case socket_type(Socket) of
-        ssl -> ssl:close(Socket);
-        tcp -> gen_tcp:close(Socket)
-    end.
+%tcp_close(Socket) ->
+%    case socket_type(Socket) of
+%        ssl -> ssl:close(Socket);
+%        tcp -> gen_tcp:close(Socket)
+%    end.
 
 tcp_setopts(Socket, Opts) ->
     case socket_type(Socket) of
