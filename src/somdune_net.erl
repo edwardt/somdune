@@ -184,15 +184,10 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
     Msg ->
         io:format("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)])
 
-  after Timeout ->
-        log_info("timeout", []),
-        reply(Sock, Headers,
-                fun(_) -> [{status, 408, "Request Timeout"},
-                        {header, {<<"Content-Type: ">>, <<"text/html">>}},
-                        {html, "<html><title>Request timeout</title>"
-                                "<body><h1>Request timeout</h1></body></html>"}]
-        end)
-  end.
+    after Timeout ->
+        log_info("timeout; so far: ~p", [Headers]),
+        reply(#request{socket=Sock}, {408, "Timeout"}, [{'Content-Type', <<"text/html">>}], "<html><title>Request timeout</title><body><h1>Request timeout</h1></body></html>")
+    end.
 
 
 reply(Request, Status) ->
