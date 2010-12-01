@@ -258,14 +258,18 @@ relay(FromSocket, ToSocket, Bytes) ->
     tcp_setopts(FromSocket, [{packet, 0}, {active, once} ]),
     tcp_setopts(ToSocket,   [{packet, 0}, {active, once} ]),
     receive
-        {tcp, FromSocket, Data} ->
+        {Type, FromSocket, Data} when Type == tcp orelse Type == ssl ->
             tcp_send(ToSocket, Data),
             relay(FromSocket, ToSocket, Bytes);
-        {tcp, ToSocket, Data} ->
+        {Type, ToSocket, Data} when Type == tcp orelse Type == ssl ->
             tcp_send(FromSocket, Data),
             relay(FromSocket, ToSocket, Bytes + size(Data));
         {tcp_closed, _} ->
-            { ok, Bytes }
+            { ok, Bytes };
+        {ssl_closed, _} ->
+            { ok, Bytes };
+        Else ->
+            log_error("Relay error: ~p", [Else])
     after
         30000 ->
             { error, timeout }
