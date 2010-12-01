@@ -59,11 +59,26 @@ start_proxy() ->
     % This is called by init/1 and kicks off the HTTP proxy.
     ?INFO("Starting proxy on port: ~p", [?HTTP_PORT]),
 
+    {{ok, CaCert}, {ok, Cert}, {ok, Key}} = { application:get_env(webdirs, ssl_cacertfile)
+                                            , application:get_env(webdirs, ssl_certfile)
+                                            , application:get_env(webdirs, ssl_keyfile) },
+
+    Options = case {CaCert, Cert, Key} of
+        {nil, nil, nil} ->
+            [];
+        _ ->
+            Opts = [{ssl_imp, new}, {verify, 0}, {depth, 0}, {certfile, Cert}, {keyfile, Key}],
+            case CaCert of
+                nil -> Opts;
+                _   -> Opts ++ [{cacertfile, CaCert}]
+            end
+    end,
+
     % While any module can register any other module to be a proxy, the
     % simplest way is for this module to register itself. Somdune will
     % spawn a new process which will call into that module's
     % route_request/1 function.
-    somdune:register_balancer(?HTTP_PORT, ?MODULE),
+    somdune:register_balancer(?HTTP_PORT, ?MODULE, Options),
 
     % That's it!
     {ok, null}.

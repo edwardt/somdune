@@ -9,5 +9,8 @@
                   somdune
                  ]},
   {mod, { webdirs_app, []}},
-  {env, []}
+  {env, [ {ssl_cacertfile, nil}
+        , {ssl_certfile  , nil}
+        , {ssl_keyfile   , nil}
+        ]}
  ]}.

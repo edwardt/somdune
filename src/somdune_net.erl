@@ -17,15 +17,15 @@
 -author('Jason Smith <jhs@couchone.com>').
 
 -include("somdune.hrl").
--export([proxy/2, request_to_binary/1]).
+-export([run_proxy/3, request_to_binary/1]).
 
 
 info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
 error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
 
 
-proxy(Port, Module) ->
-    info("Starting proxy on port ~p with module ~p", [Port, Module]),
+run_proxy(Port, BalancerModule, Options) ->
+    info("Starting proxy on port ~p with module ~p; options ~p", [Port, BalancerModule, Options]),
     case gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]) of
         {ok, ListenSocket} ->
             tcpAcceptor(Port, ListenSocket, Module);

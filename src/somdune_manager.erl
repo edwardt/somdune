@@ -25,8 +25,8 @@
 % The user-level API
 %
 
-handle_call({register, Port, Module}, _From, State) ->
-    spawn(somdune_net, proxy, [Port, Module]),
+handle_call({register, Port, Module, Options}, _From, State) ->
+    spawn(somdune_net, run_proxy, [Port, Module, Options]),
     {reply, ok, State}.
 
 

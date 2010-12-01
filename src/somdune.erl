@@ -25,10 +25,13 @@
 % The user-level API
 %
 
--export([register_balancer/2]).
+-export([register_balancer/2, register_balancer/3]).
 
 register_balancer(Port, Module) ->
-    gen_server:call(?MANAGER, {register, Port, Module}).
+    register_balancer(Port, Module, []).
+
+register_balancer(Port, Module, Options) ->
+    gen_server:call(?MANAGER, {register, Port, Module, Options}).
 
 
 %% --------------------------------------------------------------------
