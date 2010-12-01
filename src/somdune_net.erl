@@ -26,44 +26,105 @@ error(Msg, Args) -> error_logger:error_msg(Msg ++ "~n", Args).
 
 run_proxy(Port, BalancerModule, Options) ->
     info("Starting proxy on port ~p with module ~p; options ~p", [Port, BalancerModule, Options]),
-    case gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]) of
+
+    NetModule = case lists:keysearch(certfile, 1, Options) of
+        false ->
+            gen_tcp;
+        {value, _} ->
+            info("Port ~p will use SSL", [Port]),
+            application:start(crypto),
+            application:start(public_key),
+            case application:start(ssl) of
+                {error, {already_started, ssl}} ->
+                    no_problem;
+                ok ->
+                    % Seed SSL if possible.
+                    case file:read_file_info("/dev/random") of
+                        {error, enoent} ->
+                            error("Could not seed SSL from /dev/random"),
+                            ssl:seed(term_to_binary(now()));
+                        {ok, _} ->
+                            ssl:seed(os:cmd("df if=/dev/random bs=256 count=1"))
+                    end
+            end,
+            ssl
+    end,
+
+    Restart = fun() ->
+        info("Restarting proxy", []),
+        run_proxy(Port, BalancerModule, Options)
+    end,
+
+    Accept = fun(Sock) ->
+        %info("Accept: ~p", [Sock]),
+        case NetModule of
+            gen_tcp ->
+                gen_tcp:accept(Sock);
+            ssl ->
+                {ok, SslSock} = ssl:transport_accept(Sock),
+                %info("ssl:transport_accept done: ~p", [SslSock]),
+                case ssl:ssl_accept(SslSock) of
+                    {error, Er} ->
+                        error("Error accepting SSL connection: ~p", [Er]),
+                        {error, Er};
+                    ok ->
+                        %info("SSL handshake success", []),
+                        {ok, SslSock}
+                end
+        end
+    end,
+
+    case NetModule:listen(Port, [binary, {active, false}, {reuseaddr, true}] ++ Options) of
         {ok, ListenSocket} ->
-            tcpAcceptor(Port, ListenSocket, Module);
+            tcpAcceptor(ListenSocket, BalancerModule, Accept, Restart);
         {error, eaddrinuse} ->
             error("Port is already in use: ~p", [Port]),
-            ok
+            ok;
+        Else ->
+            error("What happened? ~p", [Else]),
+            exit(error)
     end.
 
 
-tcpAcceptor(Port, ListeningSocket, BalancerModule) ->
-        case gen_tcp:accept(ListeningSocket) of
-                {ok, Sock} ->
-                        Pid = spawn(fun () ->
-                                receive
-                                    permission ->
-                                        inet:setopts(Sock, [
-                                                binary,
-                                                {packet, http_bin},
-                                                {active, false}
-                                        ])
-                                    after 60000 -> timeout
-                                end,
-                                collectHttpHeaders(Sock, ?HTTP_HDR_RCV_TMO, BalancerModule, [])
-                        end),
+tcpAcceptor(ListeningSocket, BalancerModule, Accept, Restart) ->
+    Again = fun() ->
+        tcpAcceptor(ListeningSocket, BalancerModule, Accept, Restart)
+    end,
 
-                        gen_tcp:controlling_process(Sock, Pid),
-                        Pid ! permission,
-                        tcpAcceptor(Port, ListeningSocket, BalancerModule);
+    case Accept(ListeningSocket) of
+        {ok, Sock} ->
+            Pid = spawn(fun () ->
+                receive
+                    permission ->
+                        tcp_setopts(Sock, [ binary
+                                          %, {packet, http_bin}
+                                          , {packet, http}
+                                          , {active, false} ])
+                    after 60000 ->
+                        timeout
+                end,
 
-                {error, econnaborted} ->
-                        tcpAcceptor(Port, ListeningSocket, BalancerModule);
-                {error, closed} -> finished;
-                Msg ->
-                        error_logger:error_msg("Acceptor died: ~p~n", [Msg]),
-                        gen_tcp:close(ListeningSocket),
-                        error_logger:error_msg("Attempting restart", []),
-                        proxy(Port, BalancerModule)
-        end.
+                collectHttpHeaders(Sock, ?HTTP_HDR_RCV_TMO, BalancerModule, [])
+            end),
+
+            tcp_controlling_process(Sock, Pid),
+            Pid ! permission,
+
+            Again();
+        {error, econnaborted} ->
+            info("Connection aborted", []),
+            Again();
+        {error, closed} ->
+            finished;
+        {error, OtherError} ->
+            info("Restarting on unexpected error: ~p", [OtherError]),
+            Again();
+        Msg ->
+            error_logger:error_msg("Acceptor died: ~p~n", [Msg]),
+            gen_tcp:close(ListeningSocket),
+            error_logger:error_msg("Attempting restart", []),
+            Restart()
+    end.
 
 
 collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
@@ -72,18 +133,18 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
   %Timeout = (UntilTS - tstamp()),
   Timeout = UntilTS,
 
-  inet:setopts(Sock, [{active, once}]),
+  tcp_setopts(Sock, [{active, once}]),
   receive
     % Add this next header into the pile of already received headers
-    {http, Sock, {http_header, _Length, Key, undefined, Value}} ->
+    {Type, Sock, {http_header, _Length, Key, undefined, Value}} when Type == ssl orelse Type == http ->
         collectHttpHeaders(Sock, UntilTS, BalancerModule,
                 [{header, {Key,Value}} | Headers]);
 
-    {http, Sock, {http_request, Method, Path, HTTPVersion}} ->
+    {Type, Sock, {http_request, Method, Path, HTTPVersion}} when Type == ssl orelse Type == http ->
         collectHttpHeaders(Sock, UntilTS, BalancerModule,
                 [{http_request, Method, Path, HTTPVersion} | Headers]);
 
-    {http, Sock, http_eoh} ->
+    {Type, Sock, http_eoh} when Type == ssl orelse Type == http ->
         % With the headers known, allow the registered proxy module to decide what to do with the query.
         Packets = lists:reverse(Headers),
         case lists:keytake(http_request, 1, Packets) of
@@ -117,12 +178,14 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
             false ->
                 error("Failed to parse request: ~p", [Packets])
         end;
+    {tcp_closed, Sock} ->
+        info("tcp_closed", []),
+        nevermind;
+    Msg ->
+        io:format("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)])
 
-    {tcp_closed, Sock} -> nevermind;
-
-    Msg -> io:format("Invalid message received: ~p~nAfter: ~p~n",
-                [Msg, lists:reverse(Headers)])
   after Timeout ->
+        info("timeout", []),
         reply(Sock, Headers,
                 fun(_) -> [{status, 408, "Request Timeout"},
                         {header, {<<"Content-Type: ">>, <<"text/html">>}},
@@ -155,9 +218,8 @@ reply(Request, Status, Headers, Body) ->
     ],
 
     HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(byte_size(Body))})),
-    gen_tcp:send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]),
+    tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]),
     poison_pill(Request, <<"postreply">>).
-
 
 proxy(Req, Ip, Port) ->
     proxy_raw(Req, request_to_binary(Req), Ip, Port).
@@ -165,8 +227,8 @@ proxy(Req, Ip, Port) ->
 proxy_raw(Req, Data, Ip, Port) ->
     poison_pill(Req, <<"preproxy">>),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
-    info("Sending, ToSocket = ~p", [ToSocket]),
-    gen_tcp:send(ToSocket, Data),
+    %info("Sending, ToSocket = ~p", [ToSocket]),
+    tcp_send(ToSocket, Data),
     relay(Req#request.socket, ToSocket, 0),
     poison_pill(Req, <<"postproxy">>).
 
@@ -192,20 +254,55 @@ request_to_binary(Req) ->
 
 
 relay(FromSocket, ToSocket, Bytes) ->
-    inet:setopts(FromSocket, [{packet, 0}, {active, once} ]),
-    inet:setopts(ToSocket,   [{packet, 0}, {active, once} ]),
+    tcp_setopts(FromSocket, [{packet, 0}, {active, once} ]),
+    tcp_setopts(ToSocket,   [{packet, 0}, {active, once} ]),
     receive
         {tcp, FromSocket, Data} ->
-            gen_tcp:send(ToSocket, Data),
+            tcp_send(ToSocket, Data),
             relay(FromSocket, ToSocket, Bytes);
         {tcp, ToSocket, Data} ->
-            gen_tcp:send(FromSocket, Data),
+            tcp_send(FromSocket, Data),
             relay(FromSocket, ToSocket, Bytes + size(Data));
         {tcp_closed, _} ->
             { ok, Bytes }
     after
         30000 ->
             { error, timeout }
+    end.
+
+
+%%
+%% Helper functions that work on normal or SSL sockets.
+%%
+
+socket_type(Socket) ->
+    case Socket of
+        {sslsocket, _, _} -> ssl;
+        _                 -> tcp
+    end.
+
+tcp_send(Socket, Data) ->
+    case socket_type(Socket) of
+        ssl -> ssl:send(Socket, Data);
+        tcp -> gen_tcp:send(Socket, Data)
+    end.
+
+tcp_close(Socket) ->
+    case socket_type(Socket) of
+        ssl -> ssl:close(Socket);
+        tcp -> gen_tcp:close(Socket)
+    end.
+
+tcp_setopts(Socket, Opts) ->
+    case socket_type(Socket) of
+        ssl -> ssl:setopts(Socket, Opts);
+        tcp -> inet:setopts(Socket, Opts)
+    end.
+
+tcp_controlling_process(Socket, NewOwner) ->
+    case socket_type(Socket) of
+        ssl -> ssl:controlling_process(Socket, NewOwner);
+        tcp -> gen_tcp:controlling_process(Socket, NewOwner)
     end.
 
 
