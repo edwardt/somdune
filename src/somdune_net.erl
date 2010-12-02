@@ -182,6 +182,9 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
     {tcp_closed, Sock} ->
         %log_info("tcp_closed", []),
         nevermind;
+    {ssl_closed, Sock} ->
+        log_info("ssl socket closed: ~p", [Sock]),
+        tcp_close(Sock);
     Msg ->
         io:format("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)])
 
@@ -293,11 +296,11 @@ tcp_send(Socket, Data) ->
         tcp -> gen_tcp:send(Socket, Data)
     end.
 
-%tcp_close(Socket) ->
-%    case socket_type(Socket) of
-%        ssl -> ssl:close(Socket);
-%        tcp -> gen_tcp:close(Socket)
-%    end.
+tcp_close(Socket) ->
+    case socket_type(Socket) of
+        ssl -> ssl:close(Socket);
+        tcp -> gen_tcp:close(Socket)
+    end.
 
 tcp_setopts(Socket, Opts) ->
     case socket_type(Socket) of
