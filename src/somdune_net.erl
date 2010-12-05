@@ -115,7 +115,7 @@ tcpAcceptor(ListeningSocket, BalancerModule, Accept, Restart) ->
             log_info("Connection aborted", []),
             Again();
         {error, closed} ->
-            log_error("Restarting on closed socket", []),
+            log_info("Restarting on closed socket", []),
             Again();
         {error, OtherError} ->
             log_error("Restarting on unexpected error: ~p", [OtherError]),
