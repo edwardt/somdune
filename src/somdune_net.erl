@@ -180,13 +180,14 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                 log_error("Failed to parse request: ~p", [Packets])
         end;
     {tcp_closed, Sock} ->
-        %log_info("tcp_closed", []),
-        nevermind;
+        log_info("Incomplete query on socket: ~p", []),
+        tcp_close(Sock);
     {ssl_closed, Sock} ->
-        log_info("ssl socket closed: ~p", [Sock]),
+        log_info("Incomplete query on SSL socket: ~p", [Headers]),
         tcp_close(Sock);
     Msg ->
-        io:format("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)])
+        log_info("Invalid message received: ~p~nAfter: ~p~n", [Msg, lists:reverse(Headers)]),
+        tcp_close(Sock)
 
     after Timeout ->
         log_info("timeout; so far: ~p", [Headers]),
