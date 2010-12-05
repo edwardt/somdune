@@ -235,7 +235,9 @@ proxy_raw(Req, Data, Ip, Port) ->
 make_request(Method, PathTuple, Version) ->
     {abs_path, Path} = PathTuple,
 
-    [atom_to_list(Method),
+    [if is_list(Method) -> Method;
+        true -> atom_to_list(Method)
+     end,
      <<" ">>,
      Path,
      case Version of
