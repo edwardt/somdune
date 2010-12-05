@@ -217,7 +217,7 @@ reply(Request, Status, Headers, Body) ->
         StatusMessage
     ],
 
-    HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(byte_size(Body))})),
+    HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(size(Body))})),
     tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]),
     poison_pill(Request, <<"postreply">>).
 
@@ -229,7 +229,7 @@ proxy_raw(Req, Data, Ip, Port) ->
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
     %log_info("Sending, ToSocket = ~p", [ToSocket]),
     tcp_send(ToSocket, Data),
-    relay(Req#request.socket, ToSocket, 0),
+    relay(Req#request.socket, ToSocket, size(Data), 0),
     poison_pill(Req, <<"postproxy">>).
 
 make_request(Method, PathTuple, Version) ->
@@ -261,20 +261,23 @@ request_to_binary(Req) ->
         make_headers(Req#request.headers) ]).
 
 
-relay(FromSocket, ToSocket, Bytes) ->
+relay(FromSocket, ToSocket, BytesIn, BytesOut) ->
+    % Note, data from FromSocket increments BytesIn; data from ToSocket increments BytesOut.
     tcp_setopts(FromSocket, [{packet, 0}, {active, once} ]),
     tcp_setopts(ToSocket,   [{packet, 0}, {active, once} ]),
     receive
         {Type, FromSocket, Data} when Type == tcp orelse Type == ssl ->
+            log_info("Data: ~p", [Data]),
             tcp_send(ToSocket, Data),
-            relay(FromSocket, ToSocket, Bytes);
+            relay(FromSocket, ToSocket, BytesIn + size(Data), BytesOut);
         {Type, ToSocket, Data} when Type == tcp orelse Type == ssl ->
+            log_info("Data: ~p", [Data]),
             tcp_send(FromSocket, Data),
-            relay(FromSocket, ToSocket, Bytes + size(Data));
+            relay(FromSocket, ToSocket, BytesIn, BytesOut + size(Data));
         {tcp_closed, _} ->
-            { ok, Bytes };
+            { ok, BytesIn, BytesOut };
         {ssl_closed, _} ->
-            { ok, Bytes };
+            { ok, BytesIn, BytesOut };
         Else ->
             log_error("Relay error: ~p", [Else])
     after
