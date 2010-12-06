@@ -84,16 +84,18 @@ start_proxy() ->
     {ok, null}.
 
 
-route_request(Request) ->
-    {abs_path, Path} = Request#request.path,
-    ?INFO("Request for path: ~p", [Path]),
+route_request(Request)
+    -> {abs_path, Path} = Request#request.path
+    , ?INFO("Request for path: ~p", [Path])
+    %, ?INFO("Request: ~p", [Request])
 
-    case Path of
-        <<"/reload">> ->
+    , [TopLevel | _] = string:tokens(Path, "?/")
+    , case TopLevel of
+        "reload" ->
             ?INFO("Reloading plugin", []),
             _Pid = spawn(fun() -> reload() end),
-            {reply, {200, "Reloading"}, [{'Content-Type', <<"text/html">>}], <<"Policy reloaded. <a href='/'>Try now.</a>\r\n">>};
-        _ ->
+            {reply, {200, "Reloading"}, [{'Content-Type', <<"text/html">>}], <<"Policy reloaded. <a href='/'>Try now.</a>\r\n">>}
+        ; _ ->
             Dirs = string:tokens(Path, "/"),
             case Dirs of
                 [] ->
