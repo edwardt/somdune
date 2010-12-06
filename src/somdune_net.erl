@@ -18,7 +18,7 @@
 
 -include("somdune.hrl").
 -export([run_proxy/3, request_to_binary/1, tcp_setopts/2, tcp_send/2]).
--export([log_info/2, log_error/2]).
+-export([log_info/2, log_error/2, header/2]).
 
 
 log_info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
@@ -328,6 +328,14 @@ relay(FromSocket, ToSocket, BytesIn, BytesOut) ->
         30000 ->
             { error, timeout }
     end.
+
+
+header(Req, Key)
+    -> case lists:keyfind(Key, 1, Req#request.headers)
+	of false -> ""
+	; {Key, Val} -> Val
+	end
+    .
 
 
 %%

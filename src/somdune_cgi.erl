@@ -41,17 +41,17 @@ env_for_request(Req, raw)
       , {"GATEWAY_INTERFACE", "CGI/1.1"}
       , {"PATH_TRANSLATED"  , FullPath}
       , {"QUERY_STRING"     , binary_to_list(erlang:iolist_to_binary(AfterQMark))}
-      , {"CONTENT_LENGTH"   , header(Req, 'Content-Length')}
+      , {"CONTENT_LENGTH"   , somdune_net:header(Req, 'Content-Length')}
       ]
     .
 
 
 data_for_request(Req)
-    -> case header(Req, 'Content-Length')
+    -> case somdune_net:header(Req, 'Content-Length')
 	of ""
 	    -> <<>>
 	; LenStr
-	    -> case header(Req, "Expect") % XXX String, not atom, not sure how future-proof that is.
+	    -> case somdune_net:header(Req, "Expect") % XXX String, not atom, not sure how future-proof that is.
 		of "100-continue"
 		    -> somdune_net:tcp_send(Req#request.socket, <<"HTTP/1.1 100 Continue\r\n\r\n">>)
 		; _ -> ok
@@ -77,14 +77,6 @@ data_for_request(Sock, Chunks, Remaining)
 		    %-> somdune_net:log_info("WTF! ~p\n", [Else])
 		    -> exit({cgi_data_collection_error, Else})
 		end
-	end
-    .
-
-
-header(Req, Key)
-    -> case lists:keyfind(Key, 1, Req#request.headers)
-	of false -> ""
-	; {Key, Val} -> Val
 	end
     .
 
