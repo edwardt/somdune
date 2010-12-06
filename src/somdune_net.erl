@@ -311,11 +311,11 @@ relay(FromSocket, ToSocket, BytesIn, BytesOut) ->
     tcp_setopts(ToSocket,   [{packet, 0}, {active, once} ]),
     receive
         {Type, FromSocket, Data} when Type == tcp orelse Type == ssl ->
-            log_info("Data: ~p", [Data]),
+            %log_info("Data: ~p", [Data]),
             tcp_send(ToSocket, Data),
             relay(FromSocket, ToSocket, BytesIn + size(Data), BytesOut);
         {Type, ToSocket, Data} when Type == tcp orelse Type == ssl ->
-            log_info("Data: ~p", [Data]),
+            %log_info("Data: ~p", [Data]),
             tcp_send(FromSocket, Data),
             relay(FromSocket, ToSocket, BytesIn, BytesOut + size(Data));
         {tcp_closed, _} ->
