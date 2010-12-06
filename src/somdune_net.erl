@@ -17,7 +17,8 @@
 -author('Jason Smith <jhs@couchone.com>').
 
 -include("somdune.hrl").
--export([run_proxy/3, request_to_binary/1]).
+-export([run_proxy/3, request_to_binary/1, tcp_setopts/2, tcp_send/2]).
+-export([log_info/2, log_error/2]).
 
 
 log_info(Msg, Args) -> error_logger:info_msg(Msg ++ "~n", Args).
@@ -169,6 +170,8 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                         reply(Request, Status, RespHeaders);
                     {reply, Status, RespHeaders, Body} ->
                         reply(Request, Status, RespHeaders, Body);
+                    {cgi, CgiProgram} ->
+                        cgi(Request, CgiProgram);
                     noop ->
                         ok;
                     Else ->
@@ -215,11 +218,52 @@ reply(Request, Status, Headers, Body) ->
         list_to_binary(integer_to_list(StatusCode)),
         <<" ">>,
         StatusMessage
-    ],
+    ]
 
-    HeaderBytes = make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(size(Body))})),
-    tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body]),
-    poison_pill(Request, <<"postreply">>).
+    , HeaderBytes = case(Headers)
+        of null -> <<>> % Headers will be included in the body so don't insert any data.
+        ;  _ -> make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(size(Body))}))
+        end
+    , tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body])
+    , poison_pill(Request, <<"postreply">>)
+    .
+
+
+cgi(Request, Program)
+    -> process_flag(trap_exit, true)
+    , {ok, {Env, InputData}} = somdune_cgi:prep_request(Request)
+    , log_info("CGI for request: ~p", [{Env, InputData}])
+    , Port = open_port({spawn_executable, Program}, [binary, stream, {args, ["first", "second"]}, {env, Env}]) % TODO: catch
+    , case Port
+        of Port when is_port(Port)
+            -> Receiver = fun(Self, Chunks)
+                %-> log_info("I AM WAITING FOR THE CGI SCRIPT NOW: ~p\n", [Chunks])
+                -> receive
+                    {Port, {data, Data}} when is_port(Port)
+                        -> Self(Self, [Data | Chunks])
+                    ; {'EXIT', Port, _Reason} when is_port(Port)
+                        % Done. Return the chunks in order.
+                        -> {ok, erlang:iolist_to_binary(lists:reverse(Chunks))}
+                    ; {'EXIT', Pid, Reason} when is_pid(Pid)
+                        -> exit({linked_process_died, Pid, Reason})
+                    ; Else
+                        -> log_error("Woa: ~p", [Else])
+                        , exit({unknown_process_error, Else})
+                    after 3000
+                        -> log_error("Timeout waiting for CGI", [])
+                        , exit(timeout)
+                    end
+                end
+            , port_command(Port, InputData) % Send the POST or PUT data through.
+            , case Receiver(Receiver, [])
+                of {ok, Data}
+                    -> reply(Request, {200, "ok"}, null, Data)
+                end
+        ; Error
+            -> exit({open_port_failed, Error, [{request, Request}]})
+        end
+    .
+
 
 proxy(Req, Ip, Port) ->
     proxy_raw(Req, request_to_binary(Req), Ip, Port).
