@@ -171,7 +171,9 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                     {reply, Status, RespHeaders, Body} ->
                         reply(Request, Status, RespHeaders, Body);
                     {cgi, CgiProgram} ->
-                        cgi(Request, CgiProgram);
+                        cgi(Request, CgiProgram, []);
+                    {cgi, CgiProgram, Env} ->
+                        cgi(Request, CgiProgram, Env);
                     noop ->
                         ok;
                     Else ->
@@ -229,9 +231,10 @@ reply(Request, Status, Headers, Body) ->
     .
 
 
-cgi(Request, Program)
+cgi(Request, Program, BaseEnv)
     -> process_flag(trap_exit, true)
-    , {ok, {Env, InputData}} = somdune_cgi:prep_request(Request)
+    , {ok, {CgiEnv, InputData}} = somdune_cgi:prep_request(Request)
+    , Env = lists:keymerge(1, lists:keysort(1, BaseEnv), lists:keysort(1, CgiEnv)) % Prefer the given environment over the auto-generated one.
     , log_info("CGI for request: ~p", [{Env, InputData}])
     , Port = open_port({spawn_executable, Program}, [binary, stream, {args, ["first", "second"]}, {env, Env}]) % TODO: catch
     , case Port
