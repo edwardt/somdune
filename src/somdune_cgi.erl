@@ -40,6 +40,7 @@ env_for_request(Req, raw)
     , [ {"REQUEST_METHOD"   , Method}
       , {"GATEWAY_INTERFACE", "CGI/1.1"}
       , {"PATH_TRANSLATED"  , FullPath}
+      , {"HTTP_COOKIE"      , somdune_net:header(Req, 'Cookie')}
       , {"QUERY_STRING"     , binary_to_list(erlang:iolist_to_binary(AfterQMark))}
       , {"CONTENT_LENGTH"   , somdune_net:header(Req, 'Content-Length')}
       ]
