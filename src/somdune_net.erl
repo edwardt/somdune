@@ -155,7 +155,7 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                 RequestHeaders = [{atomify(Key), Val} || {header, {Key, Val}} <- HeaderPackets],
                 Request = #request{socket=Sock, method=Method, path=Path, version=HttpVersion, headers=RequestHeaders},
 
-                poison_pill(Request, <<"preroute">>),
+                poison_pill(Request, "preroute"),
                 case apply(BalancerModule, route_request, [Request]) of
                     {route, {Host, Port}} ->
                         proxy(Request, Host, Port);
@@ -180,7 +180,7 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                         log_info("Unknown ~p:route_request for ~p -> ~p", [BalancerModule, Request, Else]),
                         ok
                 end,
-                poison_pill(Request, <<"postroute">>);
+                poison_pill(Request, "postroute");
             false ->
                 log_error("Failed to parse request: ~p", [Packets])
         end;
@@ -209,7 +209,7 @@ reply(Request, Status, Headers) ->
 
 reply(Request, Status, Headers, Body) ->
     log_info("reply Status=~p Headers=~p Body=~p", [Status, Headers, Body]),
-    poison_pill(Request, <<"prereply">>),
+    poison_pill(Request, "prereply"),
 
     {StatusCode, StatusMessage} = Status,
     StatusBytes = [
@@ -227,7 +227,7 @@ reply(Request, Status, Headers, Body) ->
         ;  _ -> make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(size(Body))}))
         end
     , tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body])
-    , poison_pill(Request, <<"postreply">>)
+    , poison_pill(Request, "postreply")
     .
 
 
@@ -272,12 +272,12 @@ proxy(Req, Ip, Port) ->
     proxy_raw(Req, request_to_binary(Req), Ip, Port).
 
 proxy_raw(Req, Data, Ip, Port) ->
-    poison_pill(Req, <<"preproxy">>),
+    poison_pill(Req, "preproxy"),
     { ok, ToSocket } = gen_tcp:connect(Ip, Port, [binary, {packet, 0} ]),
     %log_info("Sending, ToSocket = ~p", [ToSocket]),
     tcp_send(ToSocket, Data),
     relay(Req#request.socket, ToSocket, size(Data), 0),
-    poison_pill(Req, <<"postproxy">>).
+    poison_pill(Req, "postproxy").
 
 make_request(Method, PathTuple, Version) ->
     {abs_path, Path} = PathTuple,
