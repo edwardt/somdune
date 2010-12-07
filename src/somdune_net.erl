@@ -384,8 +384,8 @@ atomify(Val) ->
 
 % The ability to crash the server with a header for testing.
 poison_pill(Request, Hook) ->
-    case lists:keyfind('X-Somdune-Die', 1, Request#request.headers) of
-        {'X-Somdune-Die', Hook} ->
+    case lists:keyfind("X-Somdune-Die", 1, Request#request.headers) of
+        {"X-Somdune-Die", Hook} ->
             log_info("Activating poison pill at ~p", [Hook]),
             exit(poison_pill);
         _ -> ok
