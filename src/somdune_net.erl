@@ -170,10 +170,6 @@ collectHttpHeaders(Sock, UntilTS, BalancerModule, Headers) ->
                         reply(Request, Status, RespHeaders);
                     {reply, Status, RespHeaders, Body} ->
                         reply(Request, Status, RespHeaders, Body);
-                    {cgi, CgiProgram} ->
-                        cgi(Request, CgiProgram, []);
-                    {cgi, CgiProgram, Env} ->
-                        cgi(Request, CgiProgram, Env);
                     noop ->
                         ok;
                     Else ->
@@ -229,44 +225,6 @@ reply(Request, Status, Headers, Body) ->
     , tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body])
     , poison_pill(Request, "postreply")
     .
-
-
-cgi(Request, Program, BaseEnv)
-    -> process_flag(trap_exit, true)
-    , {ok, {CgiEnv, InputData}} = somdune_cgi:prep_request(Request)
-    , Env = lists:keymerge(1, lists:keysort(1, BaseEnv), lists:keysort(1, CgiEnv)) % Prefer the given environment over the auto-generated one.
-    , log_info("CGI for request: ~p", [{Env, InputData}])
-    , Port = open_port({spawn_executable, Program}, [binary, stream, {args, ["first", "second"]}, {env, Env}]) % TODO: catch
-    , case Port
-        of Port when is_port(Port)
-            -> Receiver = fun(Self, Chunks)
-                %-> log_info("I AM WAITING FOR THE CGI SCRIPT NOW: ~p\n", [Chunks])
-                -> receive
-                    {Port, {data, Data}} when is_port(Port)
-                        -> Self(Self, [Data | Chunks])
-                    ; {'EXIT', Port, _Reason} when is_port(Port)
-                        % Done. Return the chunks in order.
-                        -> {ok, erlang:iolist_to_binary(lists:reverse(Chunks))}
-                    ; {'EXIT', Pid, Reason} when is_pid(Pid)
-                        -> exit({linked_process_died, Pid, Reason})
-                    ; Else
-                        -> log_error("Woa: ~p", [Else])
-                        , exit({unknown_process_error, Else})
-                    after 3000
-                        -> log_error("Timeout waiting for CGI", [])
-                        , exit(timeout)
-                    end
-                end
-            , port_command(Port, InputData) % Send the POST or PUT data through.
-            , case Receiver(Receiver, [])
-                of {ok, Data}
-                    -> reply(Request, {200, "ok"}, null, Data)
-                end
-        ; Error
-            -> exit({open_port_failed, Error, [{request, Request}]})
-        end
-    .
-
 
 proxy(Req, Ip, Port) ->
     proxy_raw(Req, request_to_binary(Req), Ip, Port).

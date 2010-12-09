@@ -95,9 +95,6 @@ route_request(Request)
             ?INFO("Reloading plugin", []),
             _Pid = spawn(fun() -> reload() end),
             {reply, {200, "Reloading"}, [{'Content-Type', <<"text/html">>}], <<"Policy reloaded. <a href='/'>Try now.</a>\r\n">>}
-        ; "cgi-bin"
-            -> ?INFO("Executing CGI", [])
-            , {cgi, "cgi.sh"} % Absolute path, otherwise this runs from the CWD. The README says to run it from "example".
         ; _ ->
             Dirs = string:tokens(Path, "/"),
             case Dirs of
