@@ -73,18 +73,20 @@ run_proxy(Port, BalancerModule, Options) ->
                         {ok, SslSock}
                 end
         end
-    end,
+    end
 
-    case NetModule:listen(Port, [binary, {active, false}, {reuseaddr, true}] ++ Options) of
-        {ok, ListenSocket} ->
-            tcpAcceptor(ListenSocket, BalancerModule, Accept, Restart);
-        {error, eaddrinuse} ->
-            log_error("Port is already in use: ~p", [Port]),
-            ok;
-        Else ->
-            log_error("What happened? ~p", [Else]),
-            exit(error)
-    end.
+    , case NetModule:listen(Port, [binary, {active, false}, {reuseaddr, true}] ++ Options)
+        of {ok, ListenSocket}
+            -> log_info("Successful listen (~p) on ~p", [NetModule, Port])
+            , tcpAcceptor(ListenSocket, BalancerModule, Accept, Restart)
+        ; {error, eaddrinuse}
+            -> log_error("Port is already in use: ~p", [Port])
+            , ok
+        ; Else
+            -> log_error("What happened? ~p", [Else])
+            , exit(error)
+        end
+    .
 
 
 tcpAcceptor(ListeningSocket, BalancerModule, Accept, Restart) ->
