@@ -75,9 +75,10 @@ run_proxy(Port, BalancerModule, Options) ->
         end
     end
 
+    , log_info("Beginning listen (~p) on ~p by ~p", [NetModule, Port, self()])
     , case NetModule:listen(Port, [binary, {active, false}, {reuseaddr, true}] ++ Options)
         of {ok, ListenSocket}
-            -> log_info("Successful listen (~p) on ~p", [NetModule, Port])
+            -> log_info("Successful listen (~p) on ~p by ~p", [NetModule, Port, self()])
             , tcpAcceptor(ListenSocket, BalancerModule, Accept, Restart)
         ; {error, eaddrinuse}
             -> log_error("Port is already in use: ~p", [Port])
