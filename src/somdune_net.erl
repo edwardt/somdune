@@ -219,7 +219,7 @@ reply(Request, Status, Headers, Body) ->
     ]
 
     , HeaderBytes = case(Headers)
-        of null -> <<>> % Headers will be included in the body so don't insert any data.
+        of null -> <<"">> % Headers will be included in the body so don't insert any data.
         ;  _ -> make_headers(lists:keystore('Content-Length', 1, Headers, {'Content-Length', integer_to_list(size(Body))}))
         end
     , tcp_send(Request#request.socket, [StatusBytes, <<"\r\n">>, HeaderBytes, Body])
